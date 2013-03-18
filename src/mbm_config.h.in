@@ -1,0 +1,36 @@
+// =====================================================================================
+// 
+//       Filename:  mbm_config.h
+// 
+//    Description:  mbm library configurable defines
+// 
+//        Version:  1.0
+//        Created:  12/14/2012 11:04:11 PM
+//       Revision:  none
+//       Compiler:  g++ 4.7 or later
+// 
+//         Author:  Thomas Rodgers (twr), rodgert@twrodgers.com
+//
+//	Copyright (c) 2012, Thomas Rodgers
+//
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+//	you may not use this file except in compliance with the License.
+//	You may obtain a copy of the License at
+//
+//	   http://www.apache.org/licenses/LICENSE-2.0
+//
+//	Unless required by applicable law or agreed to in writing, software
+//	distributed under the License is distributed on an "AS IS" BASIS,
+//	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//	See the License for the specific language governing permissions and
+//	limitations under the License.
+// =====================================================================================
+#ifndef MBM_CONFIG_H_
+#define MBM_CONFIG_H_
+
+#define VERSION_MAJOR @MBM_VERSION_MAJOR@
+#define VERSION_MINOR @MBM_VERSION_MINOR@
+#define BUILD_NUMBER  @MBM_BUILD_NUMBER@
+#define PATCH_LEVEL   @MBM_PATCH_LEVEL@
+
+#endif // MBM_CONFIG_H_
