@@ -8,7 +8,8 @@ Requires:
 * gcc >= 4.7.3
 
 To build:
+```
     $ mkdir build/Release && cd build/Release
     $ cmake ../.. -DCMAKE_BUILD_TYPE=Release
     $ make
- 
+```
