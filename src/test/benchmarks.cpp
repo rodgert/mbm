@@ -39,8 +39,9 @@ int main(int argc, char **argv) {
     mbm::suite suite;
     try {
         auto counts = { 1000, 10000, 100000 };
-        suite.add("qsort vs std::sort - qsort", [] { return new qsort_fixture(); }, counts);
-        suite.add("qsort vs std::sort - std::sort", [] { return new sort_fixture(); }, counts);
+        suite.add("qsort vs std::sort") 
+            ("qsort", [] { return new qsort_fixture(); }, counts)
+            ("std::sort", [] { return new sort_fixture(); }, counts);
 
         suite.parse_cmdline_opts(argc, argv);
         suite.run();

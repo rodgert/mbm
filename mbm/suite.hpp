@@ -76,17 +76,36 @@ namespace mbm {
             typedef std::vector<uint64_t> run_res_t;
             typedef std::vector<std::pair<std::string, run_res_t>> run_table_t;
 
-            explicit fixture_runner(bool use_rdtsc, std::function<fixture*(void)> factory) : 
+            explicit fixture_runner(const std::string & group, bool use_rdtsc, std::function<fixture*(void)> factory) : 
+                group_(group),
                 use_rdtsc_(use_rdtsc), 
                 factory_(std::move(factory)) { } 
 
             template<typename T>
-            explicit fixture_runner(bool use_rdtsc, std::function<fixture*(void)> factory, std::initializer_list<T> table_data) :
+            explicit fixture_runner(const std::string & group, bool use_rdtsc, std::function<fixture*(void)> factory, std::initializer_list<T> table_data) :
+                group_(group),
                 use_rdtsc_(use_rdtsc),
                 factory_(std::move(factory)),
                 generator_(new model<T>(std::move(table_data))) { }
 
+            fixture_runner(const fixture_runner & other) :
+                group_(other.group_),
+                use_rdtsc_(other.use_rdtsc_), 
+                factory_(other.factory_) {
+                    if (other.generator_)
+                        generator_.reset(other.generator_->clone());
+                }
+
             fixture_runner() = default;
+
+            fixture_runner & operator=(const fixture_runner & rhs) {
+                group_ = rhs.group_;
+                use_rdtsc_ = rhs.use_rdtsc_;
+                factory_ = rhs.factory_;
+                if (rhs.generator_)
+                    generator_.reset(rhs.generator_->clone());
+                return *this;
+            }
 
             std::unique_ptr<fixture> setup() const {
                 std::unique_ptr<fixture> res(factory_());
@@ -102,6 +121,7 @@ namespace mbm {
                 fixture->fixture_teardown();
             }
 
+            std::string group() const { return group_; }
             bool is_table() const { return generator_.get() != nullptr; }
 
             run_table_t run_table(unsigned numruns, std::unique_ptr<fixture> & fixture) const {
@@ -127,6 +147,7 @@ namespace mbm {
             struct concept {
                 virtual ~concept() { }
 
+                virtual concept* clone() const = 0;
                 virtual size_t size() const = 0;
                 virtual std::string to_string(const boost::any &) const = 0;
                 virtual boost::any next() = 0;
@@ -139,6 +160,7 @@ namespace mbm {
                     data(std::move(t)),
                     cur(std::begin(data)) { }
 
+                virtual concept* clone() const { return new model<T>(*this); }
                 virtual size_t size() const { return data.size(); }
                 virtual std::string to_string(const boost::any & v) const {
                     BOOST_ASSERT(!v.empty());
@@ -180,9 +202,31 @@ namespace mbm {
                 read_final_tsc(t);
             }
 
+            std::string group_;
             bool use_rdtsc_;
             std::function<fixture*(void)> factory_;
             std::unique_ptr<concept> generator_;
+        };
+
+        struct easy_init {
+            typedef std::map<std::string, fixture_runner> fixture_map_t;
+            fixture_map_t & fixtures;
+            bool use_rdtsc;
+            std::string group;
+
+            easy_init(fixture_map_t & fixtures, bool use_rdtsc, const std::string & group) : 
+                fixtures(fixtures), use_rdtsc(use_rdtsc), group(group) { }
+
+            easy_init & operator()(const std::string & name, std::function<fixture*(void)> factory) { 
+                fixtures[name] = fixture_runner(group, use_rdtsc, std::move(factory));
+                return *this;
+            }
+
+            template<typename T>
+            easy_init & operator()(const std::string & name, std::function<fixture*(void)> factory, std::initializer_list<T> table_data) { 
+                fixtures[name] = fixture_runner(group, use_rdtsc, std::move(factory), std::move(table_data));
+                return *this;
+            }
         };
 
         struct empty_fixture : fixture {
@@ -195,6 +239,7 @@ namespace mbm {
         const opt_t pincore { "pincore", "Pin execution to specified core" };
         const opt_t numruns { "numruns,n", "Average execution times over numruns" };
         const opt_t filter { "filter,f", "Filter benchmarks, running only those matching a regexp" };
+        const opt_t group { "group,g", "Filter benchmark groups, running only those matching a regexp" };
         const opt_t rdtsc { "rdtsc", "Force use of rdtsc even if CPU supports rdtscp" };
     }
 
@@ -213,6 +258,7 @@ namespace mbm {
         int pincore;
         unsigned numruns;
         strs_t filters;
+        strs_t groups;
         bool use_rdtsc;
 
         suite(bool add_generic_opts = true) {
@@ -261,14 +307,18 @@ namespace mbm {
         }
 
         void add(const std::string & name, std::function<fixture*(void)> factory) { 
-            fixtures_[name] = detail::fixture_runner(use_rdtsc, std::move(factory));
+            fixtures_[name] = detail::fixture_runner("", use_rdtsc, std::move(factory));
         }
 
         template<typename T>
         void add(const std::string & name, std::function<fixture*(void)> factory, std::initializer_list<T> table_data) { 
-            fixtures_[name] = detail::fixture_runner(use_rdtsc, std::move(factory), std::move(table_data));
+            fixtures_[name] = detail::fixture_runner("", use_rdtsc, std::move(factory), std::move(table_data));
         }
 
+        detail::easy_init add(const std::string & group) {
+            return detail::easy_init(fixtures_, use_rdtsc, group);
+        }
+        
         void run() const {
             set_affinity();
             auto overhead = compute_overhead();
@@ -283,7 +333,7 @@ namespace mbm {
     private:
         typedef detail::fixture_runner::run_res_t run_res_t;
         typedef detail::fixture_runner::run_table_t run_table_t;
-
+        typedef std::vector<std::regex> filters_t;
         typedef std::set<std::string> fixture_names_t;
         typedef std::map<std::string, detail::fixture_runner> fixture_map_t;
         fixture_map_t fixtures_;
@@ -300,7 +350,7 @@ namespace mbm {
         uint64_t compute_overhead() const {
             if (verbose) std::cout << "Computing loop overhead..." << std::flush;
             uint64_t res = std::numeric_limits<uint64_t>::max();
-            detail::fixture_runner empty_runner(use_rdtsc, [] { return new detail::empty_fixture(); });
+            detail::fixture_runner empty_runner("", use_rdtsc, [] { return new detail::empty_fixture(); });
             for (auto i = 0u; i < 1000000u / numruns; i++) {
                 auto runres = run(empty_runner);
                 runres.emplace_back(res);
@@ -310,39 +360,66 @@ namespace mbm {
             return res;
         }
 
-        fixture_names_t filter_fixtures() const {
-            fixture_names_t res;
-            std::for_each(std::begin(fixtures_), std::end(fixtures_),
-                    [&](decltype(*std::end(fixtures_)) _) {
-                        res.insert(_.first);
-                    });
-            
-            std::for_each(std::begin(filters), std::end(filters),
-                    [&](const std::string & f) { filter(res, f); });
+        fixture_map_t filter_fixtures() const {
+            auto res = filter(groups, fixtures_, 
+                          [&](const filters_t & filters, const fixture_map_t::value_type & v) {
+                                return should_run(filters, v.second.group());
+                          });
+                            
+            return filter(filters, res, 
+                          [&](const filters_t & filters, const fixture_map_t::value_type & v) {
+                                return should_run(filters, v.first);
+                          });
+        }
+        
+        template<typename Predicate>
+        static fixture_map_t filter(const strs_t exprs, const fixture_map_t & fixtures, const Predicate & pred) {
+            if (exprs.empty()) return fixtures; // run everything
+
+            fixture_map_t res;
+            filters_t regexes;
+            std::transform(std::begin(exprs), std::end(exprs), 
+                    std::inserter(regexes, std::begin(regexes)), parse_regex); 
+
+            std::copy_if(std::begin(fixtures), std::end(fixtures), std::inserter(res, std::begin(res)), 
+                    [&](decltype(*std::end(fixtures)) _) { return pred(regexes, _); });
             return res;
         }
 
-        void filter(fixture_names_t & fixtures, const std::string & filter) const {
-            std::vector<std::string> to_remove;
-            std::regex r(filter);
-            std::for_each(std::begin(fixtures), std::end(fixtures), 
-                    [&](const std::string & fixture) {
-                        if (std::regex_match(fixture, r)) to_remove.emplace_back(fixture); 
-                    });
-            std::for_each(std::begin(to_remove), std::end(to_remove), 
-                    [&](const std::string & fixture) { fixtures.erase(fixture); });
+        static std::regex parse_regex(const std::string & expr) {
+            try {
+                return std::regex(expr);
+            } catch(...) {
+                std::ostringstream stm;
+                stm << "Error parsing filter spec " << expr;
+                std::throw_with_nested(std::runtime_error(stm.str()));
+            }
         }
 
-        void run(uint64_t overhead, const fixture_names_t & names) const {
+        static bool should_run(const filters_t & filters, const std::string & name) {
+            if (name.empty()) return true; // always run
+            auto res = std::find_if(std::begin(filters), std::end(filters),
+                            [&](const std::regex & expr) { return std::regex_match(name, expr); });
+            return res != filters.end();
+        }
+
+        void run(uint64_t overhead, const fixture_map_t & fixtures) const {
             std::cout << "Running benchmarks..." << std::flush;
-            strs_t results;
-            std::for_each(std::begin(fixtures_), std::end(fixtures_),
+            std::multimap<std::string, std::string> results;
+            std::transform(std::begin(fixtures), std::end(fixtures), 
+                    std::inserter(results, std::begin(results)),
                     [&](decltype(*std::end(fixtures_)) _) { 
-                        if (names.count(_.first))
-                            results.emplace_back(run(overhead, _.first, _.second)); 
-                    });
+                        return std::make_pair(_.second.group(), run(overhead, _.first, _.second)); });
             std::cout << "Done." << std::endl;
-            std::for_each(std::begin(results), std::end(results), [](const std::string & r) { std::cout << r << std::endl; });
+
+            std::string last;
+            std::for_each(std::begin(results), std::end(results), [&](decltype(*std::end(results)) r) { 
+                        auto group = r.first.empty() ? "Ungrouped" : r.first;
+                        if (group != last) 
+                            std::cout << std::string(10, '=') << ' ' << group << ' ' << std::string(10, '=') << std::endl;
+                        std::cout << r.second << std::endl; 
+                        last = group;
+                    });
         }
 
         std::string run(uint64_t overhead, const std::string & name, const detail::fixture_runner & runner) const {
@@ -352,6 +429,7 @@ namespace mbm {
                 std::for_each(std::begin(res), std::end(res), [&](decltype(*std::end(res)) _) {
                             res_stm << name << "(" << _.first << ")";
                             report(res_stm, overhead, _.second);
+                            res_stm << '\n';
                         });
             } else {
                 auto res = run(runner);
@@ -361,23 +439,24 @@ namespace mbm {
             return res_stm.str();
         }
 
-        static std::string indent(size_t chars = 8) { return std::string(' ', chars); }
+        static std::string indent(size_t chars = 8) { return std::string(chars, ' '); }
+        template<typename Iterator>
+        static double compute_stddev(Iterator begin, Iterator end, double avg, size_t numruns) {
+            double res = std::accumulate(begin, end, 0.0, [avg](double r, decltype(*end) t) {
+                        auto offs = t - avg;
+                        return r + offs * offs;
+                    });
+            return sqrt(res / numruns);
+        }
+
         void report(std::ostream & stm, uint64_t overhead, const run_res_t & res) const {
-            uint64_t total = 0;
             run_res_t adj;
-            std::for_each(std::begin(res), std::end(res), [&](uint64_t t) { 
-                    auto a = t - overhead;
-                    adj.emplace_back(a);
-                    total += a; 
-                });
+            std::transform(std::begin(res), std::end(res), std::inserter(adj, std::begin(adj)), 
+                    [overhead](uint64_t t) { return t - overhead; });
+            auto total = std::accumulate(std::begin(adj), std::end(adj), 0u);
             auto avg = static_cast<double>(total) / numruns;
 
-            double stddev = 0.0;
-            std::for_each(std::begin(adj), std::end(adj), [&](uint64_t t) {
-                    auto offs = static_cast<double>(t) - avg;
-                    stddev += offs * offs;
-                });
-            stddev = sqrt(stddev / numruns);
+            auto stddev = compute_stddev(std::begin(adj), std::end(adj), avg, numruns);
 
             run_res_t sorted(adj);
             std::sort(std::begin(sorted), std::end(sorted));
