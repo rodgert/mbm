@@ -409,7 +409,8 @@ namespace mbm {
             std::transform(std::begin(fixtures), std::end(fixtures), 
                     std::inserter(results, std::begin(results)),
                     [&](decltype(*std::end(fixtures_)) _) { 
-                        return std::make_pair(_.second.group(), run(overhead, _.first, _.second)); });
+                        return std::make_pair(_.second.group(), run(overhead, _.first, _.second)); 
+                    });
             std::cout << "Done." << std::endl;
 
             std::string last;
@@ -441,12 +442,12 @@ namespace mbm {
 
         static std::string indent(size_t chars = 8) { return std::string(chars, ' '); }
         template<typename Iterator>
-        static double compute_stddev(Iterator begin, Iterator end, double avg, size_t numruns) {
+        static double compute_stddev(Iterator begin, Iterator end, double avg) {
             double res = std::accumulate(begin, end, 0.0, [avg](double r, decltype(*end) t) {
                         auto offs = t - avg;
                         return r + offs * offs;
                     });
-            return sqrt(res / numruns);
+            return sqrt(res / std::distance(begin, end));
         }
 
         void report(std::ostream & stm, uint64_t overhead, const run_res_t & res) const {
@@ -456,7 +457,7 @@ namespace mbm {
             auto total = std::accumulate(std::begin(adj), std::end(adj), 0u);
             auto avg = static_cast<double>(total) / numruns;
 
-            auto stddev = compute_stddev(std::begin(adj), std::end(adj), avg, numruns);
+            auto stddev = compute_stddev(std::begin(adj), std::end(adj), avg);
 
             run_res_t sorted(adj);
             std::sort(std::begin(sorted), std::end(sorted));

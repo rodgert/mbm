@@ -26,6 +26,7 @@
 // =====================================================================================
 
 #include "sortvsqsort.hpp"
+#include "listvsvect.hpp"
 
 #include <mbm/mbm.hpp>
 
@@ -39,9 +40,13 @@ int main(int argc, char **argv) {
     mbm::suite suite;
     try {
         auto counts = { 1000, 10000, 100000 };
+        auto counts2 = { 10, 100, 1000 };
         suite.add("qsort vs std::sort") 
             ("qsort", [] { return new qsort_fixture(); }, counts)
             ("std::sort", [] { return new sort_fixture(); }, counts);
+        suite.add("list vs vector")
+            ("list", [] { return new lv::list_fixture(); }, counts2)
+            ("vector", [] { return new lv::vect_fixture(); }, counts2);
 
         suite.parse_cmdline_opts(argc, argv);
         suite.run();
