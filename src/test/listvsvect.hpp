@@ -72,7 +72,6 @@ struct list_fixture : mbm::fixture {
     }
 };
 
-
 struct vect_fixture : mbm::fixture { 
     fixture_state state;
     virtual void setup(const boost::any & v) {

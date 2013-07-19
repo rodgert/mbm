@@ -16,8 +16,9 @@ configure_file(
     "${PROJECT_BINARY_DIR}/mbm_config.h"
 )
 
-include_directories("${PROJECT_SOURCE_DIR}/include")
-include_directories("${PROJECT_BINARY_DIR}")
+include_directories("${PROJECT_SOURCE_DIR}/include"
+                    "${PROJECT_SOURCE_DIR}/extern"
+                    "${PROJECT_BINARY_DIR}")
 
 # Dependencies for which we have CMake Find modules
 find_package(Boost 1.50 COMPONENTS program_options)

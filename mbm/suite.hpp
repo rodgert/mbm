@@ -454,7 +454,7 @@ namespace mbm {
             run_res_t adj;
             std::transform(std::begin(res), std::end(res), std::inserter(adj, std::begin(adj)), 
                     [overhead](uint64_t t) { return t - overhead; });
-            auto total = std::accumulate(std::begin(adj), std::end(adj), 0u);
+            auto total = std::accumulate(std::begin(adj), std::end(adj), 0ul);
             auto avg = static_cast<double>(total) / numruns;
 
             auto stddev = compute_stddev(std::begin(adj), std::end(adj), avg);
